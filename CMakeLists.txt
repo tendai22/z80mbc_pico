@@ -40,6 +40,9 @@ add_executable(z80mbc_pico z80mbc_pico.c )
 pico_set_program_name(z80mbc_pico "z80mbc_pico")
 pico_set_program_version(z80mbc_pico "0.1")
 
+# copy_to_ram means bootloader copies binaries to RAM and execute it
+pico_set_binary_type(z80mbc_pico copy_to_ram)
+
 # Generate PIO header
 pico_generate_pio_header(z80mbc_pico ${CMAKE_CURRENT_LIST_DIR}/blink.pio)
 

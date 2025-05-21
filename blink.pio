@@ -4,31 +4,46 @@
 ; SPDX-License-Identifier: BSD-3-Clause
 ;
 
-; SET pin 0 should be mapped to your LED GPIO
-
-.program blink
-    pull block
-    out y, 32
+;
+; PIO0:SM0 ... two/one phase clock generator(program clockgen)
+;
+; SET: BASE: 40(CLK_Pin, inverted), 41(INT_Pin, inverted)
+.program clockgen
 .wrap_target
-    mov x, y
-    set pins, 1   ; Turn LED on
-lp1:
-    jmp x-- lp1   ; Delay for (x + 1) cycles, x is a 32 bit number
-    mov x, y
-    set pins, 0   ; Turn LED off
-lp2:
-    jmp x-- lp2   ; Delay for the same number of cycles again
+    ; outputs are inverted, so 0 means High, 1 means Low
+    set pins, 1  ; Turn LED on
+    set pins, 0  ; Turn LED off
+; revive the following two lines if 2-phase clock feature we use
+    ;set pins, 2
+    ;set pins, 3
 .wrap             ; Blink forever!
 
-
 % c-sdk {
+#include <stdio.h>
+#include "hardware/pio.h"
 // this is a raw helper function for use by the user which sets up the GPIO output, and configures the SM to output on a particular pin
+//extern int my_pio_sm_set_consecutive_pindirs(PIO pio, uint sm, uint pin, uint count, bool is_out);
 
-void blink_program_init(PIO pio, uint sm, uint offset, uint pin) {
-   pio_gpio_init(pio, pin);
-   pio_sm_set_consecutive_pindirs(pio, sm, pin, 1, true);
-   pio_sm_config c = blink_program_get_default_config(offset);
-   sm_config_set_set_pins(&c, pin, 1);
-   pio_sm_init(pio, sm, offset, &c);
+void clockgen_program_init(PIO pio, uint sm, uint offset, uint pin, uint phase, float divide) {
+
+    pio_gpio_init(pio, pin);
+    if (phase == 2)
+        pio_gpio_init(pio, pin + 1);
+    pio_sm_set_consecutive_pindirs(pio, sm, pin, phase, true);
+    pio_sm_config c = clockgen_program_get_default_config(offset);
+    // set_set_pin_base should have been adjusted by pio->gpiobase
+    // so far not so in set_set_pin_base();
+    sm_config_set_set_pins(&c, pin, phase);
+    // two-phase: (4 instruction loop)
+    //  16.0 ... 2.33MHz (420ns/cycle)
+    //   9.42 ... 4.0MHz  (250ns/cycle)
+    // single clock: (2 instruction loop)
+    //  50.0 ... 1.5MHz (660-670ns) 
+    //  30.0 ... 2.5MHz (400ns) ... no wait, 
+    //  18.7 ... 4.0-4.17MHz (250-260ns) .... 0/1 wait in M1, 1 wait in WR, 0/1 wait in RD
+    //  10.0 ... 7.1-7.6MHz (130-140ns) ... seems to work
+    //   5.0 ... 14-16MHz (60-70ns) ... does not works
+    sm_config_set_clkdiv(&c, divide);
+    pio_sm_init(pio, sm, offset, &c);
 }
 %}
