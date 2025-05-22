@@ -1,1 +1,16 @@
-build
+build/
+CMakeCache.txt
+CMakeFiles/
+Makefile
+*.pio.h
+cmake_install.cmake
+compile_commands.json
+generated/
+pico-sdk/
+pico_flash_region.ld
+*.bin
+*.dis
+*.elf
+*.elf.map
+*.hex
+*.uf2
