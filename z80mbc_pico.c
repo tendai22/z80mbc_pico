@@ -39,6 +39,10 @@ void clockgen_pin_forever(PIO pio, uint sm, uint offset, uint pin, uint phase, f
     clockgen_program_init(pio, sm, offset, pin, phase, divide);
 }
 
+void sram_control_forever(PIO pio, uint sm, uint offset) {
+    sram_control_program_init(pio, sm, offset);
+}
+
 // UART defines
 // By default the stdout UART is `uart0`, so we will use the second one
 #define UART_ID uart0
@@ -60,7 +64,7 @@ void gpio_out_init(uint gpio, bool value) {
 }
 
 static uint8_t ram16[16] = {
-    0x01, 2, 3, 4
+    0x76
 };
 
 static uint8_t z80_sram_cycle(int pindir, uint8_t instruction, uint8_t wr_data)
@@ -176,7 +180,7 @@ int main()
     // pio_set_gpio_base should be invoked before pio_add_program
     uint offset1;
     offset1 = pio_add_program(pio_clock, &clockgen_program);
-    printf("Loaded program at %d\n", offset1);
+    printf("clockgen_program at %d\n", offset1);
     // two-phase: (4 instruction loop)
     //  16.0 ... 2.33MHz (420ns/cycle)
     //   9.42 ... 4.0MHz  (250ns/cycle)
@@ -200,9 +204,15 @@ int main()
     sleep_us(20);
 
     // boot ... expand Z80 program to SRAM
-    boot(0x201, &ram16[0], sizeof ram16);
+    boot(0, &ram16[0], sizeof ram16);
 
+    // setup sram_control PIO sm
+    offset1 = pio_add_program(pio_clock, &sram_control_program);
+    printf("sram_control_program at %d\n", offset1);
+    sram_control_forever(pio_clock, 1, offset1);
+    pio_sm_set_enabled(pio_clock, 1, true);
     // restart CPU
+    gpio_put(WAIT_Pin, true);
     gpio_put(RESET_Pin, true);
 
     // For more examples of UART use see https://github.com/raspberrypi/pico-examples/tree/master/uart

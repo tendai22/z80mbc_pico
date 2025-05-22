@@ -8,6 +8,7 @@
 ; PIO0:SM0 ... two/one phase clock generator(program clockgen)
 ;
 ; SET: BASE: 40(CLK_Pin, inverted), 41(INT_Pin, inverted)
+; 2 instructions
 .program clockgen
 .wrap_target
     ; outputs are inverted, so 0 means High, 1 means Low
@@ -17,6 +18,48 @@
     ;set pins, 2
     ;set pins, 3
 .wrap             ; Blink forever!
+
+;
+; PIO0:SM1 ... SRAM control (wait for MREQ)
+;
+; GPIO: 28(RESET_Pin), 21(MREQ_Pin)
+; JMP: PIN:  23(RFSH_Pin)
+; 8 instructions
+.program mreq_control
+    wait 0 gpio 28  ; wait for RESET Low
+    wait 1 gpio 21
+.wrap_target
+    wait 0 gpio 21  ; MREQ Low
+    jmp pin mreq_start
+    jmp mreq_end
+mreq_start:
+    irq set 0       ; set IRQ0 High and wait it to Low
+    wait 1 gpio 21  ; MREQ High
+    irq clear 0     ; set IRQ0 Low
+.wrap
+
+;
+; PIO0:SM2 ... SRAM control (drive WE/OE)
+;
+; IRQ0
+; SET: BASE: 14(OE_Pin), 15(WE_Pin)/COUNT: 2
+; JMP: PIN:  22(RD_Pin)
+; 8 instructions
+.program sram_drive
+    set pins, 3     ; OE,WE High
+.wrap_target
+    wait 1 irq 0    ; wait IRQ0 High
+    jmp pin sram_write  ; RD High means write cycle
+sram_read:
+    set pins, 2     ; OE Low/WE High
+    jmp sram_end
+sram_write:
+    set pins, 1     ; OE High/WE Low
+sram_end:
+    wait 0 irq 0
+    set pins, 3     ; OE,WE both High
+.wrap             ; Blink forever!
+
 
 % c-sdk {
 #include <stdio.h>
@@ -46,4 +89,22 @@ void clockgen_program_init(PIO pio, uint sm, uint offset, uint pin, uint phase, 
     sm_config_set_clkdiv(&c, divide);
     pio_sm_init(pio, sm, offset, &c);
 }
+
+void sram_control_program_init(PIO pio, uint sm, uint offset) {
+    //; SET: BASE: 14(OE_Pin), 15(WE_Pin)/ COUNT: 2
+    //; JMP: PIN:  22(RD_Pin)
+    pio_gpio_init(pio, 14);
+    pio_gpio_init(pio, 15);
+    pio_gpio_init(pio, 22);
+    
+    pio_sm_set_consecutive_pindirs(pio, sm, 14, 2, true);   // 14,15 out
+    pio_sm_config c = sram_control_program_get_default_config(offset);
+    // set_set_pin_base should have been adjusted by pio->gpiobase
+    // so far not so in set_set_pin_base();
+    sm_config_set_set_pins(&c, 14, 2);
+    sm_config_set_jmp_pin(&c, 22);
+    sm_config_set_clkdiv(&c, 1);         // 1 ... full speed 
+    pio_sm_init(pio, sm, offset, &c);
+}
+
 %}
